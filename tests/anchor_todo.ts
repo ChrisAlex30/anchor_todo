@@ -118,14 +118,52 @@ describe("anchor_todo", () => {
     assert.strictEqual(list.todos.length, 1); // still no growth
   });
 
+  it("Rejects content longer than MAX_CONTENT_LEN", async () => {
+  const tooLong = "x".repeat(MAX_CONTENT_LEN + 1);
+  const id = anchor.web3.PublicKey.unique();
+
+  try {
+    await program.methods
+      .addTodo(id, tooLong)
+      .accounts({ list: todoAccount })
+      .rpc();
+
+    assert.fail("Expected ContentTooLong error");
+  } catch (e) {
+    const msg = e.error?.errorMessage || e.message;
+    assert.match(msg, /Content too long|ContentTooLong/i);
+  }
+});
 
 
+  it("Fills up to MAX_TODO_LIST_LENGTH and rejects the next", async () => {
+    let list = await program.account.todoListAccountData.fetch(todoAccount);
+    let live = Number(list.count);
 
+    // Add up to MAX_TODO_LIST_LENGTH
+    for (let k = live; k < MAX_TODO_LIST_LENGTH; k++) {
+      const id = anchor.web3.PublicKey.unique();
+      const content = `Item ${k}`;
+      await program.methods
+        .addTodo(id, content)
+        .accounts({ list: todoAccount})
+        .rpc();
+    }
 
+    list = await program.account.todoListAccountData.fetch(todoAccount);
+    assert.strictEqual(Number(list.count), MAX_TODO_LIST_LENGTH);
 
-
-
- 
-
+    // One more should fail with ListFull
+    try {
+      await program.methods
+        .addTodo(anchor.web3.PublicKey.unique(), "overflow")
+        .accounts({ list:todoAccount })
+        .rpc();
+      assert.fail("Expected ListFull error");
+    } catch (e) {
+      const msg = e.error?.errorMessage || e.message;
+      assert.match(msg, /List is full|ListFull/i);
+    }
+  });
   
 });
